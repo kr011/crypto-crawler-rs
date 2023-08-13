@@ -24,7 +24,8 @@ const SPOT_WEBSOCKET_URL: &str = "wss://api.huobi.pro/ws";
 // const OPTION_WEBSOCKET_URL: &str = "wss://api.hbdm.com/option-ws";
 const FUTURES_WEBSOCKET_URL: &str = "wss://futures.huobi.com/ws";
 const COIN_SWAP_WEBSOCKET_URL: &str = "wss://futures.huobi.com/swap-ws";
-const USDT_SWAP_WEBSOCKET_URL: &str = "wss://futures.huobi.com/linear-swap-ws";
+const USDT_SWAP_WEBSOCKET_URL: &str = "wss://api.hbdm.vn/linear-swap-ws";
+const USDT_SWAP_WEBSOCKET_NOTIFY_URL: &str = "wss://api.hbdm.vn/linear-swap-notification";
 const OPTION_WEBSOCKET_URL: &str = "wss://futures.huobi.com/option-ws";
 
 // Internal unified client
@@ -61,6 +62,14 @@ pub type HuobiInverseSwapWSClient = HuobiWSClient<'I'>;
 /// * Trading at: <https://futures.huobi.com/en-us/linear_swap/exchange/>
 pub type HuobiLinearSwapWSClient = HuobiWSClient<'L'>;
 
+/// Huobi Linear Swap market - notification endpoint.
+///
+/// Linear Swap market uses USDT as collateral.
+///
+/// * WebSocket API doc: <https://huobiapi.github.io/docs/usdt_swap/v1/en/>
+/// * Trading at: <https://futures.huobi.com/en-us/linear_swap/exchange/>
+pub type HuobiLinearSwapNotifyWSClient = HuobiWSClient<'N'>;
+
 /// Huobi Option market.
 ///
 ///
@@ -81,6 +90,8 @@ impl<const URL: char> HuobiWSClient<URL> {
                     COIN_SWAP_WEBSOCKET_URL
                 } else if URL == 'L' {
                     USDT_SWAP_WEBSOCKET_URL
+                } else if URL == 'N' {
+                    USDT_SWAP_WEBSOCKET_NOTIFY_URL
                 } else if URL == 'O' {
                     OPTION_WEBSOCKET_URL
                 } else {
@@ -191,7 +202,15 @@ struct HuobiCommandTranslator {}
 
 impl HuobiCommandTranslator {
     fn topic_to_command(channel: &str, symbol: &str, subscribe: bool) -> String {
-        let raw_channel = format!("market.{symbol}.{channel}");
+        let mut raw_channel = format!("market.{symbol}.{channel}");
+        if channel == "funding_rate" {
+            raw_channel = format!("public.{symbol}.{channel}");
+            return format!(
+                r#"{{"op":"{}","topic":"{}"}}"#,
+                if subscribe { "sub" } else { "unsub" },
+                raw_channel
+            )
+        }
         format!(
             r#"{{"{}":"{}","id":"crypto-ws-client"}}"#,
             if subscribe { "sub" } else { "unsub" },
@@ -326,7 +345,7 @@ mod tests {
     fn test_one_topic() {
         let translator = super::HuobiCommandTranslator {};
         let commands = translator
-            .translate_to_commands(true, &[("trade.detail".to_string(), "btcusdt".to_string())]);
+        .translate_to_commands(true, &[("trade.detail".to_string(), "btcusdt".to_string())]);
 
         assert_eq!(1, commands.len());
         assert_eq!(r#"{"sub":"market.btcusdt.trade.detail","id":"crypto-ws-client"}"#, commands[0]);
